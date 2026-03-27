@@ -1,0 +1,12 @@
+# Build output
+bin/
+obj/
+
+# User data — never commit these (contain server addresses and credentials)
+servers.json
+recent.json
+
+# Rider / VS
+.idea/
+.vs/
+*.user
