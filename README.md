@@ -1,3 +1,8 @@
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-blue)
+![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)
+![Language](https://img.shields.io/badge/language-C%23-239120?logo=csharp)
+![License](https://img.shields.io/github/license/djee79/remotectl)
+![Last commit](https://img.shields.io/github/last-commit/djee79/remotectl)
 # RemoteCtl
 
 A terminal-based remote connection manager for RDP and SSH, written in C# / .NET 10.
