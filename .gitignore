@@ -5,6 +5,7 @@ obj/
 # User data — never commit these (contain server addresses and credentials)
 servers.json
 recent.json
+key
 
 # Rider / VS
 .idea/
