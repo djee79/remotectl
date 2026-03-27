@@ -2,6 +2,8 @@
 
 A terminal-based remote connection manager for RDP and SSH, written in C# / .NET 10.
 
+> Built with [.NET 10](https://dotnet.microsoft.com/download/dotnet/10.0). A self-contained publish bundles the runtime — no install needed on the target machine.
+
 ## Features
 
 - Interactive fuzzy picker with live filtering by name, host, group, or tag
