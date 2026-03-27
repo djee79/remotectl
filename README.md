@@ -4,6 +4,8 @@ A terminal-based remote connection manager for RDP and SSH, written in C# / .NET
 
 > Built with [.NET 10](https://dotnet.microsoft.com/download/dotnet/10.0). A self-contained publish bundles the runtime — no install needed on the target machine.
 
+<img width="1536" height="1024" alt="RemoteCtl Terminal RDP Manager interface" src="https://github.com/user-attachments/assets/1f4d653e-d7d1-43af-859f-7fc23428cbb7" />
+
 ## Features
 
 - Interactive fuzzy picker with live filtering by name, host, group, or tag
