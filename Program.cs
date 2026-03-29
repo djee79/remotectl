@@ -1,4 +1,7 @@
+using System.Text;
 using RemoteCtl.CLI;
+
+Console.OutputEncoding = Encoding.UTF8;
 
 // Support: remotectl --config /path/to/servers.json [command...]
 string? configPath = null;
