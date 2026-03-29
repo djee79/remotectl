@@ -23,12 +23,18 @@ public class ConnectionService
         AnsiConsole.MarkupLine($"\n[green]Connecting[/] → [bold]{Markup.Escape(server.Name)}[/] [dim]({Markup.Escape(server.Host)})[/]");
         if (useWezterm)
             AnsiConsole.MarkupLine("[dim steelblue1]  via WezTerm (new tab)[/]");
-        AnsiConsole.MarkupLine($"[dim]$ {Markup.Escape(exe)} {Markup.Escape(args)}[/]\n");
+        AnsiConsole.MarkupLine($"[dim]  {Markup.Escape(server.Protocol.ToUpperInvariant())}  {Markup.Escape(server.Host)}{(server.Port is int p ? $":{p}" : "")}  {(server.Username is { Length: > 0 } u ? Markup.Escape(u) : "[dim]no user[/]")}[/]\n");
 
         try
         {
             var psi = new ProcessStartInfo(exe, args) { UseShellExecute = false };
             var process = Process.Start(psi);
+
+            // Clear the terminal so credentials that were passed via args
+            // are not left visible in the scroll-back buffer.
+            if (!waitForExit)
+                Console.Write("\x1b[2J\x1b[H");
+
             if (waitForExit) process?.WaitForExit();
         }
         catch (Exception ex)
