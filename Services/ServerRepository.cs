@@ -36,8 +36,30 @@ public class ServerRepository
         // Transparently decrypt any stored passwords
         if (_crypto is not null)
         {
+            var stale = new List<string>();
             foreach (var s in _cache.Where(s => _crypto.IsEncrypted(s.Password)))
-                s.Password = _crypto.Decrypt(s.Password!);
+            {
+                try
+                {
+                    s.Password = _crypto.Decrypt(s.Password!);
+                }
+                catch (System.Security.Cryptography.CryptographicException)
+                {
+                    // Key mismatch — password was encrypted with a different key
+                    stale.Add(s.Name);
+                    s.Password = null;
+                }
+            }
+
+            if (stale.Count > 0)
+            {
+                Spectre.Console.AnsiConsole.MarkupLine(
+                    $"[yellow]Warning:[/] {stale.Count} password(s) could not be decrypted (wrong key) and were cleared:");
+                foreach (var name in stale)
+                    Spectre.Console.AnsiConsole.MarkupLine($"  [dim]·[/] {Spectre.Console.Markup.Escape(name)}");
+                Spectre.Console.AnsiConsole.MarkupLine(
+                    "[dim]Run [white]remotectl set-password <name>[/] to re-enter them.[/]");
+            }
         }
 
         return _cache;

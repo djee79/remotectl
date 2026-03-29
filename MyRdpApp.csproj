@@ -13,4 +13,18 @@
     <PackageReference Include="Spectre.Console" Version="0.49.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="tools\freerdp\win64\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tools\sshpass\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Ensure bundled sshpass binaries are executable on Unix after build -->
+  <Target Name="ChmodSshpass" AfterTargets="Build" Condition="'$(OS)' == 'Unix'">
+    <Exec Command="find '$(OutputPath)tools/sshpass' -type f -exec chmod +x {} +" IgnoreExitCode="true" />
+  </Target>
+
 </Project>

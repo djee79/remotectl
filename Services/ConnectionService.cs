@@ -11,14 +11,14 @@ public class ConnectionService
 
     public ConnectionService(RecentRepository recent) => _recent = recent;
 
-    public void Connect(Server server, bool useWezterm = false)
+    public void Connect(Server server, bool useWezterm = false, bool useMultimon = false)
     {
         _recent.Add(server.Name);
 
         var isSsh = server.Protocol.Equals("ssh", StringComparison.OrdinalIgnoreCase);
         var (exe, args, waitForExit) = isSsh
             ? BuildSsh(server, useWezterm)
-            : BuildRdp(server, useWezterm);
+            : BuildRdp(server, useWezterm, useMultimon);
 
         AnsiConsole.MarkupLine($"\n[green]Connecting[/] → [bold]{Markup.Escape(server.Name)}[/] [dim]({Markup.Escape(server.Host)})[/]");
         if (useWezterm)
@@ -71,8 +71,9 @@ public class ConnectionService
                 return ("plink", BuildPlinkArgs(server));
 
             // On Linux/Mac, sshpass wraps ssh using a PTY to inject the password
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && SshpassAvailable())
-                return ("sshpass", $"-p {server.Password} ssh {BuildSshArgs(server)}");
+            var sshpass = ResolveSshpass();
+            if (sshpass is not null)
+                return (sshpass, $"-p {server.Password} ssh {BuildSshArgs(server)}");
         }
 
         return ("ssh", BuildSshArgs(server));
@@ -113,7 +114,24 @@ public class ConnectionService
         return string.Join(" ", parts);
     }
 
-    private static bool SshpassAvailable() => IsOnPath("sshpass");
+    private static string? ResolveSshpass()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return null;
+
+        // Check for bundled sshpass shipped alongside this executable
+        var rid = RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "osx" : "linux";
+        var arch = RuntimeInformation.OSArchitecture switch
+        {
+            Architecture.Arm64 => "arm64",
+            _                  => "x64",
+        };
+        var bundled = Path.Combine(AppContext.BaseDirectory, "tools", "sshpass", $"{rid}-{arch}", "sshpass");
+        if (File.Exists(bundled)) return bundled;
+
+        if (IsOnPath("sshpass")) return "sshpass";
+
+        return null;
+    }
 
     private static bool IsOnPath(string exe)
     {
@@ -135,11 +153,11 @@ public class ConnectionService
 
     // ── RDP ───────────────────────────────────────────────────────────────────
 
-    private static (string exe, string args, bool waitForExit) BuildRdp(Server server, bool useWezterm)
+    private static (string exe, string args, bool waitForExit) BuildRdp(Server server, bool useWezterm, bool useMultimon = false)
     {
         var rdpExe  = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ResolveWindowsRdpExe() : ResolveFreerdp();
         var isMstsc = rdpExe.Equals("mstsc.exe", StringComparison.OrdinalIgnoreCase);
-        var rdpArgs = isMstsc ? BuildMstscArgs(server) : BuildFreerdpArgs(server);
+        var rdpArgs = isMstsc ? BuildMstscArgs(server) : BuildFreerdpArgs(server, useMultimon);
 
         if (useWezterm)
         {
@@ -157,10 +175,10 @@ public class ConnectionService
         return $"/v:{host} /f";
     }
 
-    private static string BuildFreerdpArgs(Server server)
+    private static string BuildFreerdpArgs(Server server, bool useMultimon = false)
     {
         var host  = server.Port is int p ? $"{server.Host}:{p}" : server.Host;
-        var parts = new List<string> { $"/v:{host}", "/f", "/cert:ignore" };
+        var parts = new List<string> { $"/v:{host}", useMultimon ? "/multimon" : "/f", "/cert:ignore" };
 
         if (server.Username is { Length: > 0 } u)
             parts.Add($"/u:{u}");
@@ -177,11 +195,15 @@ public class ConnectionService
 
     private static string ResolveWindowsRdpExe()
     {
-        // Prefer wfreerdp if installed, fall back to the built-in Windows client
-        var wfreerdp = Path.Combine(
+        // Prefer bundled wfreerdp shipped alongside this executable
+        var bundled = Path.Combine(AppContext.BaseDirectory, "tools", "freerdp", "win64", "wfreerdp.exe");
+        if (File.Exists(bundled)) return bundled;
+
+        // Fall back to a system-wide FreeRDP install
+        var installed = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
             "FreeRDP", "wfreerdp.exe");
-        if (File.Exists(wfreerdp)) return wfreerdp;
+        if (File.Exists(installed)) return installed;
 
         if (IsOnPath("wfreerdp.exe")) return "wfreerdp.exe";
 

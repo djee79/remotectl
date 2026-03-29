@@ -28,12 +28,13 @@ public class CommandHandler
     public async Task RunAsync(string[] args)
     {
         // Strip --wezterm / -w from anywhere in the args
-        var useWezterm = args.Contains("--wezterm") || args.Contains("-w");
-        var rest = args.Where(a => a is not ("--wezterm" or "-w")).ToArray();
+        var useWezterm   = args.Contains("--wezterm")  || args.Contains("-w");
+        var useMultimon  = args.Contains("--multimon") || args.Contains("-m");
+        var rest = args.Where(a => a is not ("--wezterm" or "-w" or "--multimon" or "-m")).ToArray();
 
         if (rest.Length == 0)
         {
-            RunInteractive(useWezterm);
+            RunInteractive(useWezterm, useMultimon);
             return;
         }
 
@@ -41,7 +42,7 @@ public class CommandHandler
         {
             case "connect":
                 if (rest.Length < 2) { Error("Usage: remotectl connect <name>"); return; }
-                Connect(string.Join(" ", rest[1..]), useWezterm);
+                Connect(string.Join(" ", rest[1..]), useWezterm, useMultimon);
                 break;
 
             case "list":
@@ -80,15 +81,15 @@ public class CommandHandler
 
     // ── Commands ─────────────────────────────────────────────────────────────
 
-    private void RunInteractive(bool useWezterm)
+    private void RunInteractive(bool useWezterm, bool useMultimon)
     {
         var servers = _servers.Load();
-        var selected = _menu.Show(servers);
+        var (selected, menuMultimon) = _menu.Show(servers);
         if (selected is not null)
-            _connection.Connect(selected, useWezterm);
+            _connection.Connect(selected, useWezterm, useMultimon || menuMultimon);
     }
 
-    private void Connect(string name, bool useWezterm)
+    private void Connect(string name, bool useWezterm, bool useMultimon = false)
     {
         var servers = _servers.Load();
         var server  = servers.FirstOrDefault(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
@@ -100,7 +101,7 @@ public class CommandHandler
             return;
         }
 
-        _connection.Connect(server, useWezterm);
+        _connection.Connect(server, useWezterm, useMultimon);
     }
 
     private async Task ListAsync(bool checkStatus)
@@ -306,6 +307,7 @@ public class CommandHandler
 
         ui.AddRow("[yellow]↑ / ↓[/]",        "Navigate the server list");
         ui.AddRow("[yellow]Enter[/]",         "Connect to the selected server");
+        ui.AddRow("[yellow]M[/]",             "Toggle multi-monitor mode (RDP only) — shown in header");
         ui.AddRow("[yellow]Esc[/]",           "Exit without connecting");
         ui.AddRow("[yellow]Any text[/]",      "Filter by name, host, group, or tag (live)");
         ui.AddRow("[yellow]Backspace[/]",     "Delete last character from filter");
@@ -323,8 +325,9 @@ public class CommandHandler
             .AddColumn(new TableColumn("[bold]Flag[/]").Width(18))
             .AddColumn(new TableColumn("[bold]Effect[/]"));
 
-        flags.AddRow("[yellow]--wezterm[/], [yellow]-w[/]",  "Spawn the connection in a new WezTerm tab");
-        flags.AddRow("[yellow]--config [white]<path>[/][/]", "Override the path to servers.json");
+        flags.AddRow("[yellow]--wezterm[/], [yellow]-w[/]",   "Spawn the connection in a new WezTerm tab");
+        flags.AddRow("[yellow]--multimon[/], [yellow]-m[/]", "Use all monitors (xfreerdp /multimon) — RDP only");
+        flags.AddRow("[yellow]--config [white]<path>[/][/]",  "Override the path to servers.json");
 
         AnsiConsole.Write(new Panel(flags)
             .Header("[bold] Global Flags [/]")

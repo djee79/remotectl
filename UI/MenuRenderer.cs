@@ -8,17 +8,18 @@ public class MenuRenderer
 {
     private const int PageSize = 20;
 
-    public Server? Show(IReadOnlyList<Server> servers)
+    public (Server? server, bool useMultimon) Show(IReadOnlyList<Server> servers)
     {
         if (servers.Count == 0)
         {
             AnsiConsole.MarkupLine("[yellow]No servers configured.[/]");
-            return null;
+            return (null, false);
         }
 
         var filter = new StringBuilder();
         var selectedIndex = 0;
         var viewOffset = 0;
+        var useMultimon = false;
 
         Console.CursorVisible = false;
 
@@ -36,17 +37,17 @@ public class MenuRenderer
                 if (selectedIndex >= viewOffset + PageSize)
                     viewOffset = selectedIndex - PageSize + 1;
 
-                Render(filterStr, filtered, selectedIndex, viewOffset);
+                Render(filterStr, filtered, selectedIndex, viewOffset, useMultimon);
 
                 var key = Console.ReadKey(intercept: true);
 
                 switch (key.Key)
                 {
                     case ConsoleKey.Escape:
-                        return null;
+                        return (null, false);
 
                     case ConsoleKey.Enter:
-                        return filtered.Count > 0 ? filtered[selectedIndex] : null;
+                        return filtered.Count > 0 ? (filtered[selectedIndex], useMultimon) : (null, false);
 
                     case ConsoleKey.UpArrow:
                         if (selectedIndex > 0) selectedIndex--;
@@ -66,7 +67,11 @@ public class MenuRenderer
                         break;
 
                     default:
-                        if (!char.IsControl(key.KeyChar))
+                        if (key.KeyChar is 'm' or 'M' && filter.Length == 0)
+                        {
+                            useMultimon = !useMultimon;
+                        }
+                        else if (!char.IsControl(key.KeyChar))
                         {
                             filter.Append(key.KeyChar);
                             selectedIndex = 0;
@@ -111,7 +116,7 @@ public class MenuRenderer
                 s.Tags.Any(st => st.Contains(tag, StringComparison.OrdinalIgnoreCase))))];
     }
 
-    private static void Render(string filter, List<Server> filtered, int selectedIndex, int viewOffset)
+    private static void Render(string filter, List<Server> filtered, int selectedIndex, int viewOffset, bool useMultimon)
     {
         Console.Write("\x1b[2J\x1b[H");
 
@@ -119,9 +124,10 @@ public class MenuRenderer
         var hasTagFilter  = tagTerms.Count > 0;
 
         // Header
-        AnsiConsole.MarkupLine("[bold steelblue1] RemoteCtl [/] [dim]Terminal RDP Manager[/]");
+        var multimonBadge = useMultimon ? " [bold yellow]⬛⬛ multimon[/]" : "";
+        AnsiConsole.MarkupLine($"[bold steelblue1] RemoteCtl [/] [dim]Terminal RDP Manager[/]{multimonBadge}");
         RenderSearchBar(filter, tagTerms);
-        AnsiConsole.MarkupLine($"[dim]  {filtered.Count} server(s)  ·  ↑↓ navigate  ·  Enter connect  ·  Esc exit[/]");
+        AnsiConsole.MarkupLine($"[dim]  {filtered.Count} server(s)  ·  ↑↓ navigate  ·  Enter connect  ·  M multimon  ·  Esc exit[/]");
         AnsiConsole.MarkupLine("[dim]" + new string('─', 64) + "[/]");
 
         if (filtered.Count == 0)
