@@ -20,10 +20,11 @@ public class MenuRenderer
             return (null, false, MenuAction.Cancel);
         }
 
-        var filter = new StringBuilder();
+        var filter       = new StringBuilder();
         var selectedIndex = 0;
-        var viewOffset = 0;
-        var useMultimon = false;
+        var viewOffset   = 0;
+        var useMultimon  = false;
+        var searchMode   = false;   // false = normal (vim), true = search/insert
 
         Console.CursorVisible = false;
 
@@ -32,7 +33,7 @@ public class MenuRenderer
             while (true)
             {
                 var filterStr = filter.ToString();
-                var filtered = ApplyFilter(servers, filterStr);
+                var filtered  = ApplyFilter(servers, filterStr);
 
                 selectedIndex = Math.Clamp(selectedIndex, 0, Math.Max(0, filtered.Count - 1));
 
@@ -41,19 +42,57 @@ public class MenuRenderer
                 if (selectedIndex >= viewOffset + PageSize)
                     viewOffset = selectedIndex - PageSize + 1;
 
-                Render(filterStr, filtered, selectedIndex, viewOffset, useMultimon);
+                Render(filterStr, filtered, selectedIndex, viewOffset, useMultimon, searchMode);
 
                 var key = Console.ReadKey(intercept: true);
 
+                // ── Search / insert mode ──────────────────────────────────────
+                if (searchMode)
+                {
+                    switch (key.Key)
+                    {
+                        case ConsoleKey.Escape:
+                            filter.Clear();
+                            selectedIndex = 0;
+                            viewOffset    = 0;
+                            searchMode    = false;
+                            break;
+
+                        case ConsoleKey.Enter:
+                            searchMode = false;  // confirm filter, back to normal
+                            break;
+
+                        case ConsoleKey.Backspace:
+                            if (filter.Length > 0)
+                            {
+                                filter.Remove(filter.Length - 1, 1);
+                                selectedIndex = 0;
+                                viewOffset    = 0;
+                            }
+                            break;
+
+                        default:
+                            if (!char.IsControl(key.KeyChar))
+                            {
+                                filter.Append(key.KeyChar);
+                                selectedIndex = 0;
+                                viewOffset    = 0;
+                            }
+                            break;
+                    }
+                    continue;
+                }
+
+                // ── Normal mode (vim) ─────────────────────────────────────────
                 switch (key.Key)
                 {
                     case ConsoleKey.Escape:
                         return (null, false, MenuAction.Cancel);
 
                     case ConsoleKey.Enter:
-                        return filtered.Count > 0
-                            ? (filtered[selectedIndex], useMultimon, MenuAction.Connect)
-                            : (null, false, MenuAction.Cancel);
+                        if (filtered.Count > 0)
+                            return (filtered[selectedIndex], useMultimon, MenuAction.Connect);
+                        break;
 
                     case ConsoleKey.UpArrow:
                         if (selectedIndex > 0) selectedIndex--;
@@ -63,38 +102,47 @@ public class MenuRenderer
                         if (selectedIndex < filtered.Count - 1) selectedIndex++;
                         break;
 
-                    case ConsoleKey.Backspace:
-                        if (filter.Length > 0)
-                        {
-                            filter.Remove(filter.Length - 1, 1);
-                            selectedIndex = 0;
-                            viewOffset = 0;
-                        }
-                        break;
-
                     case ConsoleKey.Delete:
-                        if (filter.Length == 0 && filtered.Count > 0)
+                        if (filtered.Count > 0)
                             return (filtered[selectedIndex], false, MenuAction.Delete);
                         break;
 
                     default:
-                        if (key.KeyChar is 'e' or 'E' && filter.Length == 0 && filtered.Count > 0)
+                        switch (key.KeyChar)
                         {
-                            return (filtered[selectedIndex], false, MenuAction.Edit);
-                        }
-                        else if (key.KeyChar is 'n' or 'N' && filter.Length == 0)
-                        {
-                            return (null, false, MenuAction.Add);
-                        }
-                        else if (key.KeyChar is 'm' or 'M' && filter.Length == 0)
-                        {
-                            useMultimon = !useMultimon;
-                        }
-                        else if (!char.IsControl(key.KeyChar))
-                        {
-                            filter.Append(key.KeyChar);
-                            selectedIndex = 0;
-                            viewOffset = 0;
+                            // ── Movement ──────────────────────────────────────
+                            case 'k' or 'K':
+                                if (selectedIndex > 0) selectedIndex--;
+                                break;
+                            case 'j' or 'J':
+                                if (selectedIndex < filtered.Count - 1) selectedIndex++;
+                                break;
+
+                            // ── Actions ───────────────────────────────────────
+                            case 'l' or 'L' or 'o' or 'O':
+                                if (filtered.Count > 0)
+                                    return (filtered[selectedIndex], useMultimon, MenuAction.Connect);
+                                break;
+                            case 'h' or 'H':
+                                return (null, false, MenuAction.Cancel);
+                            case 'e' or 'E':
+                                if (filtered.Count > 0)
+                                    return (filtered[selectedIndex], false, MenuAction.Edit);
+                                break;
+                            case 'n' or 'N':
+                                return (null, false, MenuAction.Add);
+                            case 'd' or 'D':
+                                if (filtered.Count > 0)
+                                    return (filtered[selectedIndex], false, MenuAction.Delete);
+                                break;
+                            case 'm' or 'M':
+                                useMultimon = !useMultimon;
+                                break;
+
+                            // ── Enter search mode ─────────────────────────────
+                            case '/':
+                                searchMode = true;
+                                break;
                         }
                         break;
                 }
@@ -103,7 +151,6 @@ public class MenuRenderer
         finally
         {
             Console.CursorVisible = true;
-            // Clear the UI before returning
             Console.Write("\x1b[2J\x1b[H");
         }
     }
@@ -135,7 +182,7 @@ public class MenuRenderer
                 s.Tags.Any(st => st.Contains(tag, StringComparison.OrdinalIgnoreCase))))];
     }
 
-    private static void Render(string filter, List<Server> filtered, int selectedIndex, int viewOffset, bool useMultimon)
+    private static void Render(string filter, List<Server> filtered, int selectedIndex, int viewOffset, bool useMultimon, bool searchMode)
     {
         Console.Write("\x1b[2J\x1b[H");
 
@@ -145,14 +192,19 @@ public class MenuRenderer
         // Header
         var multimonBadge = useMultimon ? " [bold yellow]⬛⬛ multimon[/]" : "";
         AnsiConsole.MarkupLine($"[bold steelblue1] RemoteCtl [/] [dim]Terminal RDP Manager[/]{multimonBadge}");
-        RenderSearchBar(filter, tagTerms);
-        AnsiConsole.MarkupLine($"[dim]  {filtered.Count} server(s)  ·  ↑↓ navigate  ·  Enter connect  ·  E edit  ·  N new  ·  Del delete  ·  M multimon  ·  Esc exit[/]");
+        RenderSearchBar(filter, tagTerms, searchMode);
+
+        if (searchMode)
+            AnsiConsole.MarkupLine("[dim]  type to filter  ·  [white]#tag[/] for tags  ·  Enter confirm  ·  Esc clear & exit search[/]");
+        else
+            AnsiConsole.MarkupLine($"[dim]  {filtered.Count} server(s)  ·  j/k move  ·  l/o open  ·  e edit  ·  n new  ·  d delete  ·  m multimon  ·  / search  ·  h/Esc exit[/]");
+
         AnsiConsole.MarkupLine("[dim]" + new string('─', 64) + "[/]");
 
         if (filtered.Count == 0)
         {
             AnsiConsole.MarkupLine("[dim yellow]  No servers match your query.[/]");
-            AnsiConsole.MarkupLine("[dim]  Tip: use [white]#tagname[/] to filter by tag  ·  combine with text: [white]plant #critical[/][/]");
+            AnsiConsole.MarkupLine("[dim]  Tip: use [white]#tagname[/] to filter by tag  ·  combine: [white]plant #critical[/]  ·  Esc to clear[/]");
             return;
         }
 
@@ -186,21 +238,33 @@ public class MenuRenderer
         if (remaining > 0)
             AnsiConsole.MarkupLine($"[dim]  ··· {remaining} more — keep typing to narrow[/]");
 
-        if (!hasTagFilter)
-            AnsiConsole.MarkupLine("[dim]  Tip: type [white]#tagname[/] to filter by tag[/]");
+        if (!hasTagFilter && !searchMode)
+            AnsiConsole.MarkupLine("[dim]  Tip: press [white]/[/] then [white]#tagname[/] to filter by tag[/]");
     }
 
-    private static void RenderSearchBar(string filter, List<string> tagTerms)
+    private static void RenderSearchBar(string filter, List<string> tagTerms, bool searchMode)
     {
+        // In normal mode with no filter, show a dim prompt
+        if (!searchMode && filter.Length == 0)
+        {
+            AnsiConsole.MarkupLine("[dim]  / to search[/]");
+            return;
+        }
+
+        var modeLabel = searchMode
+            ? "[bold yellow] SEARCH [/][dim] >[/]"
+            : "[dim] FILTER >[/]";
+
         if (tagTerms.Count == 0)
         {
-            AnsiConsole.MarkupLine($"[dim]  Search >[/] [white]{Markup.Escape(filter)}[/][bold white]█[/]");
+            var cursor = searchMode ? "[bold white]█[/]" : "";
+            AnsiConsole.MarkupLine($"{modeLabel} [white]{Markup.Escape(filter)}[/]{cursor}");
             return;
         }
 
         // Render text and tag tokens with distinct colors
         var tokens = filter.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var sb = new StringBuilder("[dim]  Search >[/] ");
+        var sb = new StringBuilder($"{modeLabel} ");
         var lastWasToken = false;
 
         foreach (var token in tokens)
@@ -212,11 +276,13 @@ public class MenuRenderer
             lastWasToken = true;
         }
 
-        // Cursor — append to last token position
-        if (filter.EndsWith(' '))
-            sb.Append("[dim] [/][bold white]█[/]");
-        else
-            sb.Append("[bold white]█[/]");
+        if (searchMode)
+        {
+            if (filter.EndsWith(' '))
+                sb.Append("[dim] [/][bold white]█[/]");
+            else
+                sb.Append("[bold white]█[/]");
+        }
 
         AnsiConsole.MarkupLine(sb.ToString());
     }

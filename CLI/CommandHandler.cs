@@ -494,17 +494,17 @@ public class CommandHandler
             .AddColumn(new TableColumn("[bold]Key[/]").Width(18))
             .AddColumn(new TableColumn("[bold]Action[/]"));
 
-        ui.AddRow("[yellow]↑ / ↓[/]",        "Navigate the server list");
-        ui.AddRow("[yellow]Enter[/]",         "Connect to the selected server");
-        ui.AddRow("[yellow]E[/]",             "Edit the selected server's fields");
-        ui.AddRow("[yellow]N[/]",             "Add a new server");
-        ui.AddRow("[yellow]Del[/]",           "Delete the selected server (with confirmation)");
-        ui.AddRow("[yellow]M[/]",             "Toggle multi-monitor mode (RDP only) — shown in header");
-        ui.AddRow("[yellow]Esc[/]",           "Exit without connecting");
-        ui.AddRow("[yellow]Any text[/]",      "Filter by name, host, group, or tag (live)");
-        ui.AddRow("[yellow]Backspace[/]",     "Delete last character from filter");
-        ui.AddRow("[yellow]#tagname[/]",      "Filter by tag — e.g. [dim]#production[/]");
-        ui.AddRow("[yellow]text #tag[/]",     "Combine text and tag filters — e.g. [dim]plant #critical[/]");
+        ui.AddRow("[yellow]j / k[/]",          "Move down / up  (also ↑↓ arrow keys)");
+        ui.AddRow("[yellow]l / o / Enter[/]", "Connect to the selected server");
+        ui.AddRow("[yellow]h / Esc[/]",       "Exit without connecting");
+        ui.AddRow("[yellow]e[/]",             "Edit the selected server's fields");
+        ui.AddRow("[yellow]n[/]",             "Add a new server");
+        ui.AddRow("[yellow]d / Del[/]",       "Delete the selected server (with confirmation)");
+        ui.AddRow("[yellow]m[/]",             "Toggle multi-monitor mode (RDP only) — shown in header");
+        ui.AddRow("[yellow]/[/]",             "Enter search mode — type to filter by name, host, group, or tag");
+        ui.AddRow("[yellow]#tagname[/]",      "Filter by tag (in search mode) — e.g. [dim]#production[/]");
+        ui.AddRow("[yellow]Enter[/]",         "Confirm filter and return to normal mode");
+        ui.AddRow("[yellow]Esc[/] [dim](search)[/]", "Clear filter and exit search mode");
 
         AnsiConsole.Write(new Panel(ui)
             .Header("[bold] Interactive Picker (remotectl with no args) [/]")
