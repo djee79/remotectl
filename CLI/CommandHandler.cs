@@ -2,6 +2,7 @@ using RemoteCtl.Models;
 using RemoteCtl.Services;
 using RemoteCtl.UI;
 using Spectre.Console;
+using System.Threading;
 
 namespace RemoteCtl.CLI;
 
@@ -59,6 +60,20 @@ public class CommandHandler
                 ShowRecent();
                 break;
 
+            case "edit":
+                if (rest.Length < 2) { Error("Usage: remotectl edit <name>"); return; }
+                EditServer(string.Join(" ", rest[1..]));
+                break;
+
+            case "add":
+                AddServer();
+                break;
+
+            case "delete" or "remove":
+                if (rest.Length < 2) { Error("Usage: remotectl delete <name>"); return; }
+                DeleteServer(string.Join(" ", rest[1..]));
+                break;
+
             case "set-password":
                 if (rest.Length < 2) { Error("Usage: remotectl set-password <name>"); return; }
                 SetPassword(string.Join(" ", rest[1..]));
@@ -83,10 +98,181 @@ public class CommandHandler
 
     private void RunInteractive(bool useWezterm, bool useMultimon)
     {
-        var servers = _servers.Load();
-        var (selected, menuMultimon) = _menu.Show(servers);
-        if (selected is not null)
-            _connection.Connect(selected, useWezterm, useMultimon || menuMultimon);
+        while (true)
+        {
+            var servers = _servers.Load();
+            var (selected, menuMultimon, action) = _menu.Show(servers);
+
+            switch (action)
+            {
+                case MenuAction.Connect:
+                    _connection.Connect(selected!, useWezterm, useMultimon || menuMultimon);
+                    return;
+
+                case MenuAction.Edit:
+                    EditServerInteractive(selected!);
+                    break; // reload + re-show picker
+
+                case MenuAction.Add:
+                    AddServerInteractive();
+                    break; // reload + re-show picker
+
+                case MenuAction.Delete:
+                    DeleteServerInteractive(selected!);
+                    break; // reload + re-show picker
+
+                default:
+                    return; // Cancel / Esc
+            }
+        }
+    }
+
+    private void EditServerInteractive(Server selected)
+    {
+        var updated = ServerEditor.Edit(selected);
+        if (updated is null) return;
+
+        var servers = _servers.Load().ToList();
+
+        // Name changed → check for conflicts
+        if (!updated.Name.Equals(selected.Name, StringComparison.OrdinalIgnoreCase) &&
+            servers.Any(s => s.Name.Equals(updated.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            AnsiConsole.MarkupLine($"[red]A server named '{Markup.Escape(updated.Name)}' already exists.[/]");
+            AnsiConsole.MarkupLine("[dim]Press any key…[/]");
+            Console.ReadKey(true);
+            return;
+        }
+
+        var idx = servers.FindIndex(s => s.Name.Equals(selected.Name, StringComparison.OrdinalIgnoreCase));
+        if (idx >= 0) servers[idx] = updated;
+        _servers.Save(servers);
+
+        AnsiConsole.MarkupLine($"[green]Saved.[/] [bold]{Markup.Escape(updated.Name)}[/]");
+        Thread.Sleep(700);
+    }
+
+    private void AddServerInteractive()
+    {
+        var newServer = ServerEditor.Add();
+        if (newServer is null) return;
+
+        var servers = _servers.Load().ToList();
+
+        if (servers.Any(s => s.Name.Equals(newServer.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            AnsiConsole.MarkupLine($"[red]A server named '{Markup.Escape(newServer.Name)}' already exists.[/]");
+            AnsiConsole.MarkupLine("[dim]Press any key…[/]");
+            Console.ReadKey(true);
+            return;
+        }
+
+        servers.Add(newServer);
+        _servers.Save(servers);
+
+        AnsiConsole.MarkupLine($"[green]Added.[/] [bold]{Markup.Escape(newServer.Name)}[/]");
+        Thread.Sleep(700);
+    }
+
+    private void DeleteServerInteractive(Server selected)
+    {
+        AnsiConsole.Clear();
+        AnsiConsole.MarkupLine($"[bold red] Delete Server[/]");
+        AnsiConsole.MarkupLine($"  [bold]{Markup.Escape(selected.Name)}[/]  [dim]{Markup.Escape(selected.Host)}  ·  {Markup.Escape(selected.Group)}[/]");
+        AnsiConsole.WriteLine();
+
+        if (!AnsiConsole.Confirm($"[red]Delete[/] [bold]{Markup.Escape(selected.Name)}[/]?", defaultValue: false))
+        {
+            return;
+        }
+
+        var servers = _servers.Load().ToList();
+        servers.RemoveAll(s => s.Name.Equals(selected.Name, StringComparison.OrdinalIgnoreCase));
+        _servers.Save(servers);
+
+        AnsiConsole.MarkupLine($"[red]Deleted.[/] [dim]{Markup.Escape(selected.Name)}[/]");
+        Thread.Sleep(700);
+    }
+
+    private void DeleteServer(string name)
+    {
+        var servers = _servers.Load().ToList();
+        var server  = servers.FirstOrDefault(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+        if (server is null)
+        {
+            Error($"Server '{name}' not found.");
+            return;
+        }
+
+        AnsiConsole.MarkupLine($"  [bold]{Markup.Escape(server.Name)}[/]  [dim]{Markup.Escape(server.Host)}  ·  {Markup.Escape(server.Group)}[/]");
+        AnsiConsole.WriteLine();
+
+        if (!AnsiConsole.Confirm($"[red]Delete[/] [bold]{Markup.Escape(server.Name)}[/]?", defaultValue: false))
+        {
+            AnsiConsole.MarkupLine("[dim]Cancelled.[/]");
+            return;
+        }
+
+        servers.RemoveAll(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        _servers.Save(servers);
+
+        AnsiConsole.MarkupLine($"[red]Deleted.[/] [dim]{Markup.Escape(server.Name)}[/]");
+    }
+
+    private void EditServer(string name)
+    {
+        var servers = _servers.Load().ToList();
+        var server  = servers.FirstOrDefault(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+        if (server is null)
+        {
+            Error($"Server '{name}' not found.");
+            return;
+        }
+
+        var updated = ServerEditor.Edit(server);
+        if (updated is null)
+        {
+            AnsiConsole.MarkupLine("[dim]Edit cancelled.[/]");
+            return;
+        }
+
+        if (!updated.Name.Equals(server.Name, StringComparison.OrdinalIgnoreCase) &&
+            servers.Any(s => s.Name.Equals(updated.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            Error($"A server named '{updated.Name}' already exists.");
+            return;
+        }
+
+        var idx = servers.FindIndex(s => s.Name.Equals(server.Name, StringComparison.OrdinalIgnoreCase));
+        if (idx >= 0) servers[idx] = updated;
+        _servers.Save(servers);
+
+        AnsiConsole.MarkupLine($"[green]Saved.[/] [bold]{Markup.Escape(updated.Name)}[/]");
+    }
+
+    private void AddServer()
+    {
+        var newServer = ServerEditor.Add();
+        if (newServer is null)
+        {
+            AnsiConsole.MarkupLine("[dim]Add cancelled.[/]");
+            return;
+        }
+
+        var servers = _servers.Load().ToList();
+
+        if (servers.Any(s => s.Name.Equals(newServer.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            Error($"A server named '{newServer.Name}' already exists.");
+            return;
+        }
+
+        servers.Add(newServer);
+        _servers.Save(servers);
+
+        AnsiConsole.MarkupLine($"[green]Added.[/] [bold]{Markup.Escape(newServer.Name)}[/]");
     }
 
     private void Connect(string name, bool useWezterm, bool useMultimon = false)
@@ -286,6 +472,9 @@ public class CommandHandler
 
         commands.AddRow("[cyan]remotectl[/]",                              "Open interactive server picker (default)");
         commands.AddRow("[cyan]remotectl connect [white]<name>[/][/]",     "Connect directly to a server by name");
+        commands.AddRow("[cyan]remotectl add[/]",                          "Add a new server interactively");
+        commands.AddRow("[cyan]remotectl edit [white]<name>[/][/]",        "Edit an existing server's fields");
+        commands.AddRow("[cyan]remotectl delete [white]<name>[/][/]",      "Delete a server (with confirmation)");
         commands.AddRow("[cyan]remotectl list[/]",                         "List all configured servers");
         commands.AddRow("[cyan]remotectl list --check[/]",                 "List servers with live port reachability check");
         commands.AddRow("[cyan]remotectl search [white]<term>[/][/]",      "Search by name, host, group, or tag");
@@ -307,6 +496,9 @@ public class CommandHandler
 
         ui.AddRow("[yellow]↑ / ↓[/]",        "Navigate the server list");
         ui.AddRow("[yellow]Enter[/]",         "Connect to the selected server");
+        ui.AddRow("[yellow]E[/]",             "Edit the selected server's fields");
+        ui.AddRow("[yellow]N[/]",             "Add a new server");
+        ui.AddRow("[yellow]Del[/]",           "Delete the selected server (with confirmation)");
         ui.AddRow("[yellow]M[/]",             "Toggle multi-monitor mode (RDP only) — shown in header");
         ui.AddRow("[yellow]Esc[/]",           "Exit without connecting");
         ui.AddRow("[yellow]Any text[/]",      "Filter by name, host, group, or tag (live)");

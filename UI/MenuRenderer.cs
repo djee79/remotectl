@@ -4,16 +4,20 @@ using Spectre.Console;
 
 namespace RemoteCtl.UI;
 
+public enum MenuAction { Connect, Edit, Add, Delete, Cancel }
+
 public class MenuRenderer
 {
     private const int PageSize = 20;
 
-    public (Server? server, bool useMultimon) Show(IReadOnlyList<Server> servers)
+    public (Server? server, bool useMultimon, MenuAction action) Show(IReadOnlyList<Server> servers)
     {
         if (servers.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]No servers configured.[/]");
-            return (null, false);
+            AnsiConsole.MarkupLine("[yellow]No servers configured.[/]  [dim]Press N to add one.[/]");
+            var k = Console.ReadKey(intercept: true);
+            if (k.KeyChar is 'n' or 'N') return (null, false, MenuAction.Add);
+            return (null, false, MenuAction.Cancel);
         }
 
         var filter = new StringBuilder();
@@ -44,10 +48,12 @@ public class MenuRenderer
                 switch (key.Key)
                 {
                     case ConsoleKey.Escape:
-                        return (null, false);
+                        return (null, false, MenuAction.Cancel);
 
                     case ConsoleKey.Enter:
-                        return filtered.Count > 0 ? (filtered[selectedIndex], useMultimon) : (null, false);
+                        return filtered.Count > 0
+                            ? (filtered[selectedIndex], useMultimon, MenuAction.Connect)
+                            : (null, false, MenuAction.Cancel);
 
                     case ConsoleKey.UpArrow:
                         if (selectedIndex > 0) selectedIndex--;
@@ -66,8 +72,21 @@ public class MenuRenderer
                         }
                         break;
 
+                    case ConsoleKey.Delete:
+                        if (filter.Length == 0 && filtered.Count > 0)
+                            return (filtered[selectedIndex], false, MenuAction.Delete);
+                        break;
+
                     default:
-                        if (key.KeyChar is 'm' or 'M' && filter.Length == 0)
+                        if (key.KeyChar is 'e' or 'E' && filter.Length == 0 && filtered.Count > 0)
+                        {
+                            return (filtered[selectedIndex], false, MenuAction.Edit);
+                        }
+                        else if (key.KeyChar is 'n' or 'N' && filter.Length == 0)
+                        {
+                            return (null, false, MenuAction.Add);
+                        }
+                        else if (key.KeyChar is 'm' or 'M' && filter.Length == 0)
                         {
                             useMultimon = !useMultimon;
                         }
@@ -127,7 +146,7 @@ public class MenuRenderer
         var multimonBadge = useMultimon ? " [bold yellow]⬛⬛ multimon[/]" : "";
         AnsiConsole.MarkupLine($"[bold steelblue1] RemoteCtl [/] [dim]Terminal RDP Manager[/]{multimonBadge}");
         RenderSearchBar(filter, tagTerms);
-        AnsiConsole.MarkupLine($"[dim]  {filtered.Count} server(s)  ·  ↑↓ navigate  ·  Enter connect  ·  M multimon  ·  Esc exit[/]");
+        AnsiConsole.MarkupLine($"[dim]  {filtered.Count} server(s)  ·  ↑↓ navigate  ·  Enter connect  ·  E edit  ·  N new  ·  Del delete  ·  M multimon  ·  Esc exit[/]");
         AnsiConsole.MarkupLine("[dim]" + new string('─', 64) + "[/]");
 
         if (filtered.Count == 0)
